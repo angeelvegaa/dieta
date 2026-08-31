@@ -254,8 +254,14 @@ async function runEngine(engine, launcher){
   await modalConfirm(page, { input: "2 L de agua al día" });
   await page.waitForTimeout(100);
   ok(engine, "mi dieta: se guardan las notas generales", (await page.textContent("#planNotesText")).includes("2 L de agua"));
+  const delBtn = page.locator("#planDeleteBtn");
+  await delBtn.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(2000); // deja pasar el toast antes de la captura
   await shot(page, engine, "06-mi-dieta");
-  await page.click("#planDeleteBtn");
+  ok(engine, "mi dieta: el botón de borrar es de texto explícito", (await delBtn.textContent()).trim() === "Eliminar dieta");
+  ok(engine, "mi dieta: el botón de borrar usa estilo destructivo (danger)", await delBtn.evaluate(el => el.classList.contains("act") && el.classList.contains("danger")));
+  ok(engine, "mi dieta: el botón de borrar es visible y pulsable", await delBtn.isVisible());
+  await delBtn.click();
   ok(engine, "mi dieta: eliminar pide confirmación por modal propio", await modalVisible(page));
   await modalConfirm(page);
   await page.waitForSelector("#planEmptyState:not([hidden])");

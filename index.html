@@ -148,14 +148,14 @@
     </div>
 
     <div id="planMainState" hidden>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-        <h2 style="margin:0;flex:1" id="planNameLabel">&mdash;</h2>
-        <button class="rm" id="planDeleteBtn" aria-label="Eliminar dieta">&times;</button>
-      </div>
+      <h2 style="margin:0 0 2px" id="planNameLabel">&mdash;</h2>
       <p class="hint" id="planNotesText" style="display:none"></p>
       <p class="hint" style="cursor:pointer;text-decoration:underline" id="planEditNotes">+ A&ntilde;adir notas generales (bebida, ejercicio, etc.)</p>
       <p class="hint">Toca un d&iacute;a para ver o editar lo que toca comer.</p>
       <div id="planDaysList"></div>
+      <div class="actions">
+        <button class="act danger" id="planDeleteBtn">Eliminar dieta</button>
+      </div>
     </div>
 
     <div id="planDayDetail" hidden>
