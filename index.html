@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dieta">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#EEF0E9">
+<title>Registro de dieta</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <button class="nav-btn" id="prev" aria-label="Mes anterior">&lsaquo;</button>
+    <div class="month" id="monthLabel">&mdash;<small></small></div>
+    <button class="nav-btn" id="next" aria-label="Mes siguiente">&rsaquo;</button>
+    <button class="gear" id="history" aria-label="Historial">&#128202;</button>
+    <button class="gear" id="weightBtn" aria-label="Peso">&#9878;</button>
+    <button class="gear" id="planBtn" aria-label="Mi dieta">&#127860;</button>
+    <button class="gear" id="notesBtn" aria-label="Notas">&#128221;</button>
+    <button class="gear" id="gear" aria-label="Ajustar comidas">&#9881;</button>
+  </header>
+  <div id="phaseNote" style="text-align:center;font-size:.68rem;color:var(--ink-faint);letter-spacing:.1em;text-transform:uppercase;margin:-8px 0 10px"></div>
+
+  <div class="banner" id="updateBanner" hidden>
+    <span>Hay una versi&oacute;n nueva de la app.</span>
+    <button class="primary" id="updateReload">Actualizar</button>
+  </div>
+
+  <section class="summary">
+    <div class="balance-row">
+      <div>
+        <div class="balance flat" id="balance">0</div>
+        <div class="balance-label">Balance del mes</div>
+      </div>
+      <div class="pct">
+        <b id="pct">&mdash;</b>
+        <span>Cumplimiento</span>
+        <em id="loggedNote">sin registros</em>
+      </div>
+    </div>
+    <svg class="curve" id="curve" preserveAspectRatio="none" aria-hidden="true"></svg>
+    <div class="tally">
+      <div class="t-pos"><b id="cPos">0</b><span>Cumplidas</span></div>
+      <div class="t-half"><b id="cHalf">0</b><span>A medias</span></div>
+      <div class="t-neg"><b id="cNeg">0</b><span>Fuera</span></div>
+      <div class="t-ex"><b id="cEx">0</b><span>Extras</span></div>
+    </div>
+  </section>
+
+  <div class="banner" id="reminder" hidden>
+    <span>A&uacute;n no has registrado nada hoy.</span>
+    <button id="reminderClose" aria-label="Cerrar">&times;</button>
+  </div>
+
+  <button class="past-toggle" id="pastToggle" hidden></button>
+
+  <div class="grid-card">
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="legend">
+    <span class="l1"><em>&check;</em>+1 &middot; la hice</span>
+    <span class="l2"><em>&frac12;</em>+0,5 &middot; a medias</span>
+    <span class="l3"><em>&times;</em>&minus;1 &middot; fuera de dieta</span>
+    <span class="l4"><em>1&middot;2&middot;3</em>extras entre horas, &minus;1 cada uno</span>
+  </div>
+  <div class="meals-note" id="mealsNote"></div>
+
+  <div class="actions">
+    <button class="act" id="copy">Copiar resumen</button>
+    <button class="act danger" id="clear">Borrar el mes</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-inner">
+    <h2>Fase actual</h2>
+    <select class="phase-select" id="phaseSelect">
+      <option value="">Sin especificar</option>
+      <option value="definicion">Definici&oacute;n</option>
+      <option value="mantenimiento">Mantenimiento</option>
+      <option value="volumen">Volumen</option>
+    </select>
+
+    <h2 style="margin-top:20px">Comidas del d&iacute;a</h2>
+    <p class="hint">Las que te marca el nutricionista. La columna Extra es aparte y siempre est&aacute;.</p>
+    <div id="mealList"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="act" id="addMeal">A&ntilde;adir comida</button>
+      <button class="act" id="saveMeals" style="background:var(--ink);color:var(--paper);border-color:var(--ink)">Guardar</button>
+    </div>
+
+    <h2 style="margin-top:24px">Copia de seguridad</h2>
+    <p class="hint">Copia el texto y gu&aacute;rdalo en Notas. Si cambias de m&oacute;vil o se borran los datos del navegador, lo pegas aqu&iacute; y vuelve todo.</p>
+    <div class="actions" style="margin-top:0">
+      <button class="act" id="exportBtn">Copiar mis datos</button>
+      <button class="act" id="importBtn">Restaurar datos</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="histSheet">
+  <div class="sheet-inner">
+    <h2>Historial de meses</h2>
+    <p class="hint">Evoluci&oacute;n del % de cumplimiento mes a mes.</p>
+    <svg class="curve" id="histCurve" preserveAspectRatio="none" aria-hidden="true" style="height:120px;margin-bottom:4px"></svg>
+    <div class="hist-empty" id="histCurveNote" style="padding:6px 2px 14px"></div>
+    <div id="histList"></div>
+  </div>
+</div>
+
+<div class="sheet" id="weightSheet">
+  <div class="sheet-inner">
+    <h2>Peso</h2>
+    <p class="hint">Registro opcional, aparte del balance de dieta.</p>
+    <div class="weight-input-row">
+      <input type="date" id="weightDate" style="flex:none;width:140px">
+      <input type="number" step="0.1" id="weightInput" placeholder="Peso (kg)">
+      <button class="act" id="weightSave" style="flex:none;background:var(--ink);color:var(--paper);border-color:var(--ink)">Guardar</button>
+    </div>
+    <p class="hint" style="margin-top:-8px">Puedes elegir un d&iacute;a anterior si se te olvid&oacute; anotarlo.</p>
+    <svg class="curve" id="weightCurve" preserveAspectRatio="none" aria-hidden="true" style="height:140px;margin-bottom:6px"></svg>
+    <div id="weightLegend" style="margin-bottom:12px"></div>
+    <div class="weight-list" id="weightList"></div>
+  </div>
+</div>
+
+<div class="sheet" id="planSheet">
+  <div class="sheet-inner">
+
+    <div id="planEmptyState">
+      <h2>Mi dieta</h2>
+      <p class="hint">A&uacute;n no tienes ninguna dieta guardada. Cr&eacute;ala y luego podr&aacute;s rellenar qu&eacute; toca comer cada d&iacute;a.</p>
+      <div class="actions">
+        <button class="act" id="planCreateBtn" style="background:var(--ink);color:var(--paper);border-color:var(--ink)">Crear mi dieta</button>
+      </div>
+    </div>
+
+    <div id="planMainState" hidden>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+        <h2 style="margin:0;flex:1" id="planNameLabel">&mdash;</h2>
+        <button class="rm" id="planDeleteBtn" aria-label="Eliminar dieta">&times;</button>
+      </div>
+      <p class="hint" id="planNotesText" style="display:none"></p>
+      <p class="hint" style="cursor:pointer;text-decoration:underline" id="planEditNotes">+ A&ntilde;adir notas generales (bebida, ejercicio, etc.)</p>
+      <p class="hint">Toca un d&iacute;a para ver o editar lo que toca comer.</p>
+      <div id="planDaysList"></div>
+    </div>
+
+    <div id="planDayDetail" hidden>
+      <button class="past-toggle" id="planDayBack">&lsaquo; Volver</button>
+      <h2 id="planDayTitle" style="margin-top:12px">&mdash;</h2>
+      <div id="planDayMeals"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="act" id="planDaySave" style="background:var(--ink);color:var(--paper);border-color:var(--ink)">Guardar</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="sheet" id="notesSheet">
+  <div class="sheet-inner">
+    <h2>Notas</h2>
+    <p class="hint">Todo lo que has anotado en comidas y extras, con su fecha.</p>
+    <div id="notesList"></div>
+  </div>
+</div>
+
+<div class="modal" id="modalOverlay" hidden>
+  <div class="modal-box">
+    <p id="modalMsg"></p>
+    <input type="text" id="modalInput" hidden>
+    <div class="actions">
+      <button class="act" id="modalCancel">Cancelar</button>
+      <button class="act" id="modalOk" style="background:var(--ink);color:var(--paper);border-color:var(--ink)">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
