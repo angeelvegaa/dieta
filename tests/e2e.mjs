@@ -12,7 +12,13 @@
 
 import { chromium, webkit } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
-import { start, BASE, PREFIX } from "./server.mjs";
+import { start, BASE as LOCAL_BASE, PREFIX as LOCAL_PREFIX } from "./server.mjs";
+
+// Por defecto arranca un servidor local; con E2E_BASE se prueba contra una URL
+// ya publicada (p. ej. la de GitHub Pages).
+const REMOTE = process.env.E2E_BASE || "";
+const BASE = REMOTE || LOCAL_BASE;
+const PREFIX = REMOTE ? new URL(REMOTE).pathname.replace(/\/$/, "") : LOCAL_PREFIX;
 
 const SHOTS = "/private/tmp/claude-501/-Users-angelvegabailon/fca1f419-a0ca-4117-9080-8fad727f1c83/scratchpad/shots";
 const only = process.argv[2];
@@ -347,12 +353,13 @@ async function runEngine(engine, launcher){
   await browser.close();
 }
 
-const server = await start();
+const server = REMOTE ? null : await start();
+console.log("probando contra " + BASE + "\n");
 await mkdir(SHOTS, { recursive: true });
 try {
   for (const [name, launcher] of ENGINES) await runEngine(name, launcher);
 } finally {
-  server.close();
+  server?.close();
 }
 
 await writeFile(`${SHOTS}/report.txt`, log.join("\n") + `\n\n${pass} PASS / ${fail} FAIL\n`);
