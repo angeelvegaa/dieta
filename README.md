@@ -9,7 +9,7 @@ Todos los datos se guardan solo en el dispositivo (`localStorage`).
 ```
 index.html          shell: markup + <link> + <script type="module">
 manifest.json       metadatos de instalación (rutas relativas → sirve en cualquier subruta)
-sw.js               service worker: cache-first, versionado, aviso de actualización
+sw.js               service worker: cache-first, versionado, actualización automática
 css/app.css         estilos (idénticos al archivo original)
 js/
   app.js            punto de entrada: importa cada pantalla y arranca el estado
@@ -22,7 +22,7 @@ js/
   toast.js          avisos efímeros
   longpress.js      pulsación larga (touch + ratón + clic derecho)
   stats.js          balance, % de cumplimiento, fases
-  pwa.js            registro del SW + banner de actualización
+  pwa.js            registro del SW + recarga automática al actualizar
   ui/
     month.js        pantalla principal: rejilla, ciclo de toque, columna Extra, notas
     settings.js     fase actual, comidas del día (con retro), copia de seguridad
@@ -51,9 +51,11 @@ npm test chromium           # un solo motor
 
 ## Publicar una versión nueva
 
-Sube el número de `VERSION` en `sw.js`. Al abrir la app, el service worker
-detecta la versión nueva y muestra el banner "Hay una versión nueva"; al pulsar
-*Actualizar* se activa y se recarga.
+Sube el número de `VERSION` en `sw.js` y haz push. La próxima vez que se abra
+la app, el service worker detecta la versión nueva, la instala, toma el control
+(`skipWaiting` + `clients.claim`) y la página se recarga sola una vez con el
+código nuevo. No hay que pulsar nada. El estado se guarda en cada interacción,
+así que la recarga no pierde nada.
 
 ## Despliegue en GitHub Pages
 

@@ -1,44 +1,33 @@
-/* Registro del service worker y aviso de actualización.
+/* Registro del service worker y actualización automática.
    Rutas relativas: la app se sirve desde una subruta de GitHub Pages,
-   no desde la raíz del dominio. */
+   no desde la raíz del dominio.
+
+   El SW hace skipWaiting + clients.claim, así que al publicar una versión
+   nueva se activa sola y toma el control. Aquí recargamos la página una vez
+   cuando eso ocurre. No hay aviso que pulsar: el guardado es en cada
+   interacción, la recarga no pierde nada.
+
+   No se recarga en la primera visita (cuando el SW toma el control por
+   primera vez): solo escuchamos el cambio de controlador si la página ya
+   venía controlada por un SW anterior. */
 
 export function initPWA(){
   if (!("serviceWorker" in navigator)) return;
 
-  let reloading = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading) return;
-    reloading = true;
-    location.reload();
-  });
+  if (navigator.serviceWorker.controller){
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+  }
 
   window.addEventListener("load", async () => {
     try {
       const reg = await navigator.serviceWorker.register("sw.js");
-
-      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg);
-
-      reg.addEventListener("updatefound", () => {
-        const nw = reg.installing;
-        if (!nw) return;
-        nw.addEventListener("statechange", () => {
-          if (nw.state === "installed" && navigator.serviceWorker.controller){
-            showUpdateBanner(reg);
-          }
-        });
-      });
-
-      // comprueba si hay versión nueva de vez en cuando
-      setInterval(() => { reg.update().catch(() => {}); }, 60 * 60 * 1000);
+      reg.update().catch(() => {});
+      setInterval(() => { reg.update().catch(() => {}); }, 30 * 60 * 1000);
     } catch (e) { /* sin SW la app sigue funcionando igual */ }
   });
-}
-
-function showUpdateBanner(reg){
-  const b = document.getElementById("updateBanner");
-  if (!b) return;
-  b.hidden = false;
-  document.getElementById("updateReload").onclick = () => {
-    if (reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
-  };
 }

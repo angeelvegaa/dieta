@@ -12,7 +12,7 @@
 
 import { chromium, webkit } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
-import { start, BASE as LOCAL_BASE, PREFIX as LOCAL_PREFIX } from "./server.mjs";
+import { start, swMutation, BASE as LOCAL_BASE, PREFIX as LOCAL_PREFIX } from "./server.mjs";
 
 // Por defecto arranca un servidor local; con E2E_BASE se prueba contra una URL
 // ya publicada (p. ej. la de GitHub Pages).
@@ -428,6 +428,34 @@ async function runEngine(engine, launcher){
     await shot(swPage, engine, "08-offline");
     await swCtx.setOffline(false);
     await swCtx.close();
+
+    // auto-actualización: al publicar una versión nueva del SW, la app se
+    // recarga sola sin que el usuario pulse nada (solo con servidor local).
+    if (!REMOTE){
+      const upCtx = await browser.newContext({ ...ctxOpts });
+      await upCtx.addInitScript(() => {
+        try { sessionStorage.setItem("navs", String((+sessionStorage.getItem("navs") || 0) + 1)); } catch (e) {}
+      });
+      const upPage = await upCtx.newPage();
+      await upPage.goto(BASE, { waitUntil: "load" });
+      await upPage.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 8000 }).catch(() => {});
+      const navsBefore = await upPage.evaluate(() => +sessionStorage.getItem("navs"));
+
+      swMutation.versionSuffix = "-test"; // simula el despliegue de otra versión
+      await upPage.reload({ waitUntil: "load" });
+      await upPage.waitForFunction((n) => (+sessionStorage.getItem("navs")) >= n + 2, navsBefore, { timeout: 12000 }).catch(() => {});
+      const navsAfter = await upPage.evaluate(() => +sessionStorage.getItem("navs"));
+      ok(engine, "pwa: al publicar versión nueva la app se recarga sola (sin pulsar nada)", navsAfter >= navsBefore + 2, `navegaciones ${navsBefore} -> ${navsAfter}`);
+
+      const appCaches = (await upPage.evaluate(() => caches.keys())).filter(k => k.startsWith("dieta-app-"));
+      ok(engine, "pwa: la caché nueva sustituye a la vieja (una sola caché de app, la -test)",
+        appCaches.length === 1 && appCaches[0].includes("-test"), JSON.stringify(appCaches));
+
+      await upPage.waitForSelector("#grid .cell");
+      ok(engine, "pwa: tras auto-actualizar, la app sigue funcionando", (await upPage.locator("#grid .cell").count()) > 0);
+      swMutation.versionSuffix = "";
+      await upCtx.close();
+    }
   } else {
     ok(engine, "pwa: (WebKit no soporta SW en Playwright — la app funciona igual sin él)", true);
   }

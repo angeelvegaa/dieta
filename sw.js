@@ -1,9 +1,13 @@
-/* Service worker: cache-first, versionado, con aviso de actualización.
-   Para publicar una versión nueva: sube el número de VERSION.
+/* Service worker: cache-first, versionado, con actualización automática.
+   Para publicar una versión nueva: sube el número de VERSION. La versión nueva
+   se instala, toma el control y la página se recarga sola en cuanto está lista
+   (skipWaiting + clients.claim + controllerchange), sin depender de que el
+   usuario pulse ningún aviso. El estado se guarda en cada interacción, así que
+   la recarga no pierde nada.
    Se sirve desde una subruta (GitHub Pages), así que todas las rutas son
    relativas al propio sw.js. */
 
-const VERSION = "v4";
+const VERSION = "v5";
 const APP_CACHE = "dieta-app-" + VERSION;
 const FONT_CACHE = "dieta-fonts";
 
@@ -41,8 +45,7 @@ const ASSETS = [
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(APP_CACHE).then((c) => c.addAll(ASSETS))
-    // sin skipWaiting: la página avisa y el usuario decide cuándo actualizar
+    caches.open(APP_CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
   );
 });
 
@@ -54,10 +57,6 @@ self.addEventListener("activate", (e) => {
     );
     await self.clients.claim();
   })());
-});
-
-self.addEventListener("message", (e) => {
-  if (e.data === "SKIP_WAITING" || (e.data && e.data.type === "SKIP_WAITING")) self.skipWaiting();
 });
 
 self.addEventListener("fetch", (e) => {

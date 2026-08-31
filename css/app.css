@@ -250,7 +250,7 @@ select.phase-select{
 .weight-row b{font-family:var(--display);font-variant-numeric:tabular-nums}
 .weight-row .rmw{color:var(--neg);cursor:pointer;font-size:.75rem;margin-left:10px}
 
-/* ---------- recordatorio y aviso de actualización ---------- */
+/* ---------- recordatorio ---------- */
 .banner{
   background:var(--half-bg);border:1px solid var(--half);color:var(--ink);
   border-radius:14px;padding:11px 14px;margin-bottom:12px;
@@ -259,8 +259,4 @@ select.phase-select{
 .banner button{
   border:none;background:transparent;color:var(--ink-soft);font-size:.9rem;
   cursor:pointer;margin-left:auto;flex:none;
-}
-.banner button.primary{
-  border:1px solid var(--half);background:var(--surface);color:var(--ink);
-  font-size:.74rem;font-weight:600;border-radius:9px;padding:6px 12px;
 }

@@ -37,9 +37,17 @@ gh repo create <NOMBRE-REPO> --public --source=. --remote=origin --push
 
 ```bash
 # edita lo que sea, y si tocaste HTML/CSS/JS sube la versión del cache:
-#   en sw.js → const VERSION = "v2";
+#   en sw.js → const VERSION = "v6";
 git add -A && git commit -m "..." && git push
 ```
 
-GitHub Pages re-despliega solo en 1-2 min. La próxima vez que alguien abra la
-app instalada, verá el banner **"Hay una versión nueva"**.
+GitHub Pages re-despliega solo en 1-2 min. La próxima vez que abras la app
+instalada, el service worker detecta la versión nueva y **la app se actualiza y
+se recarga sola** (no hay que pulsar nada).
+
+### Si un móvil se queda con una versión vieja
+
+Puede pasar si abriste la app con un service worker anterior que aún no se ha
+renovado. Para forzarlo: cierra del todo la app instalada (deslízala fuera del
+multitarea) y vuelve a abrirla un par de veces; o abre la URL normal en el
+navegador, y desde ahí *Ajustes del sitio → Borrar datos*, y reinstala.

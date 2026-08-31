@@ -11,6 +11,10 @@ export const PREFIX = "/dieta";
 export const PORT = 4599;
 export const BASE = `http://localhost:${PORT}${PREFIX}/`;
 
+/* Para la prueba de auto-actualización: si versionSuffix != "", el servidor
+   sirve sw.js con la VERSION modificada, como si se hubiera publicado otra. */
+export const swMutation = { versionSuffix: "" };
+
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -32,7 +36,12 @@ export function start(){
       if (p === "/" || p.endsWith("/")) p += "index.html";
       const file = join(ROOT, normalize(p));
       if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end("forbidden"); }
-      const body = await readFile(file);
+      let body = await readFile(file);
+      // simula un despliegue nuevo: cambia la VERSION del sw.js sobre la marcha
+      if (file.endsWith("/sw.js") && swMutation.versionSuffix){
+        body = Buffer.from(body.toString("utf8")
+          .replace(/const VERSION = "([^"]+)"/, `const VERSION = "$1${swMutation.versionSuffix}"`));
+      }
       res.writeHead(200, {
         "Content-Type": TYPES[extname(file)] || "application/octet-stream",
         "Cache-Control": "no-cache",
