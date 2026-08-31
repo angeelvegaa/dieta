@@ -8,6 +8,7 @@ import { customPrompt } from "../modal.js";
 import { stats } from "../stats.js";
 import { attachLongPress } from "../longpress.js";
 import { load } from "../storage.js";
+import { checkPctCrossing } from "./pct-alert.js";
 
 /* ---------- cabecera ---------- */
 export function renderHeader(){
@@ -129,13 +130,18 @@ export function renderSummary(){
   const b = document.getElementById("balance");
   b.textContent = s.logged ? fmt(s.balance) : "0";
   b.className = "balance " + (s.balance > 0 ? "up" : s.balance < 0 ? "down" : "flat");
-  document.getElementById("pct").textContent = s.pct === null ? "—" : s.pct + "%";
+  const pctEl = document.getElementById("pct");
+  pctEl.textContent = s.pct === null ? "—" : s.pct + "%";
+  // color del número según la franja: verde >=80, ámbar 70-79, rojo <=69
+  pctEl.classList.remove("good", "mid", "bad");
+  if (s.pct !== null) pctEl.classList.add(s.pct >= 80 ? "good" : s.pct >= 70 ? "mid" : "bad");
   document.getElementById("loggedNote").textContent = s.logged ? "de " + s.logged + " registros" : "sin registros";
   document.getElementById("cPos").textContent = s.pos;
   document.getElementById("cHalf").textContent = s.half;
   document.getElementById("cNeg").textContent = s.neg;
   document.getElementById("cEx").textContent = s.ex;
   renderCurve(s.daily);
+  return s;
 }
 
 function renderCurve(daily){
@@ -198,8 +204,9 @@ document.getElementById("grid").addEventListener("click", async (e) => {
     }
     setCell(btn, next);
   }
-  renderSummary();
+  const s = renderSummary();
   queueSave();
+  await checkPctCrossing(s.pct);
 });
 
 document.getElementById("pastToggle").onclick = () => {

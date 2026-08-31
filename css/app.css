@@ -67,6 +67,9 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 }
 .pct{text-align:right;flex:none}
 .pct b{font-family:var(--display);font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;display:block}
+.pct b.good{color:var(--pos)}
+.pct b.mid{color:var(--half)}
+.pct b.bad{color:var(--neg)}
 .pct span{display:block;font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 .pct em{display:block;font-style:normal;font-size:.62rem;color:var(--ink-faint);margin-top:3px}
 

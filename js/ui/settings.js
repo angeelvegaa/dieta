@@ -8,6 +8,7 @@ import { load, save, listKeys, isMonthKey } from "../storage.js";
 import { customConfirm, customPrompt } from "../modal.js";
 import { toast } from "../toast.js";
 import { renderHeader, renderGrid, renderSummary } from "./month.js";
+import { syncPctBaseline } from "./pct-alert.js";
 
 const sheet = document.getElementById("sheet");
 
@@ -94,7 +95,8 @@ document.getElementById("saveMeals").onclick = async () => {
   state.meals = newMeals;
   await save("dieta:comidas", state.meals);
   sheet.classList.remove("open");
-  renderHeader(); renderGrid(); renderSummary();
+  syncPctBaseline(renderSummary().pct);
+  renderHeader(); renderGrid();
   toast("Comidas actualizadas");
 };
 
@@ -135,6 +137,7 @@ document.getElementById("importBtn").onclick = async () => {
   if (dump.meses) for (const k in dump.meses) await save(k, dump.meses[k]);
   state.data = (await load(monthKey())) || {};
   sheet.classList.remove("open");
-  renderHeader(); renderGrid(); renderSummary(); renderPhaseNote();
+  renderHeader(); renderGrid(); renderPhaseNote();
+  syncPctBaseline(renderSummary().pct);
   toast("Datos restaurados");
 };

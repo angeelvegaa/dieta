@@ -8,6 +8,7 @@ import { toast } from "../toast.js";
 import { stats } from "../stats.js";
 import { save } from "../storage.js";
 import { renderGrid, renderSummary } from "./month.js";
+import { syncPctBaseline } from "./pct-alert.js";
 
 document.getElementById("copy").onclick = async () => {
   const s = stats();
@@ -40,6 +41,7 @@ document.getElementById("clear").onclick = async () => {
   if (!(await customConfirm("¿Borrar todas las marcas de " + MONTHS[state.view.getMonth()] + "? No se puede deshacer."))) return;
   state.data = {};
   await save(monthKey(), state.data);
-  renderGrid(); renderSummary();
+  renderGrid();
+  syncPctBaseline(renderSummary().pct);
   toast("Mes borrado");
 };

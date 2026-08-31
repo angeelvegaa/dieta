@@ -3,7 +3,7 @@
    Se sirve desde una subruta (GitHub Pages), así que todas las rutas son
    relativas al propio sw.js. */
 
-const VERSION = "v2";
+const VERSION = "v3";
 const APP_CACHE = "dieta-app-" + VERSION;
 const FONT_CACHE = "dieta-fonts";
 
@@ -31,6 +31,7 @@ const ASSETS = [
   "./js/ui/notes.js",
   "./js/ui/reminder.js",
   "./js/ui/actions.js",
+  "./js/ui/pct-alert.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-180.png",

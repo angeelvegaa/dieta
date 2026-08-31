@@ -7,6 +7,7 @@ import { buildAutoBackup } from "./backup.js";
 import { renderHeader, renderGrid, renderSummary } from "./ui/month.js";
 import { renderPhaseNote } from "./ui/settings.js";
 import { checkReminder } from "./ui/reminder.js";
+import { syncPctBaseline } from "./ui/pct-alert.js";
 import "./ui/history.js";
 import "./ui/weight.js";
 import "./ui/plan.js";
@@ -27,8 +28,11 @@ document.addEventListener("visibilitychange", () => {
   const saved = await load("dieta:comidas");
   if (Array.isArray(saved) && saved.length) state.meals = saved;
   state.data = (await load(monthKey())) || {};
-  renderHeader(); renderGrid(); renderSummary();
+  renderHeader(); renderGrid();
+  const s = renderSummary();
   renderPhaseNote();
   checkReminder();
   buildAutoBackup();
+  // fija la línea base del % sin avisar: abrir la app nunca dispara el toast
+  syncPctBaseline(s.pct);
 })();
