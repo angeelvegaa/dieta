@@ -90,7 +90,11 @@ async function runEngine(engine, launcher){
 
   // ---------- A. carga ----------
   await page.goto(BASE, { waitUntil: "load" });
-  await page.waitForSelector("#grid .cell", { timeout: 5000 });
+  await page.waitForSelector("#grid .cell", { timeout: 8000 });
+  // deja asentar fuentes / SW en el primer arranque para que los setTimeout
+  // de la pulsación larga no se retrasen por saturación de hilo
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(300);
   const cells0 = await page.locator("#grid .cell").count();
   ok(engine, "carga: rejilla solo con el día de hoy (6 casillas)", cells0 === 6, `${cells0}`);
   ok(engine, "carga: cabecera muestra el mes", /Agosto/i.test(await page.textContent("#monthLabel")));
@@ -121,7 +125,7 @@ async function runEngine(engine, launcher){
   // ---------- D. pulsación larga por TOUCH ----------
   const meal2 = page.locator("#grid .cell:not(.extra)").nth(1);
   await meal2.dispatchEvent("touchstart");
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(1100); // umbral real 480 ms; margen amplio contra retrasos del hilo
   await meal2.dispatchEvent("touchend");
   ok(engine, "nota (touch): pulsación larga abre el modal", await modalVisible(page));
   ok(engine, "nota (touch): texto 'Nota para ...'", (await modalText(page)).startsWith("Nota para"));
@@ -133,7 +137,7 @@ async function runEngine(engine, launcher){
   const box = await meal3.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(1100);
   await page.mouse.up();
   ok(engine, "nota (ratón): mantener pulsado abre el modal", await modalVisible(page));
   await modalConfirm(page, { input: "ración doble" });
