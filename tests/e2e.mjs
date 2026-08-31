@@ -344,54 +344,42 @@ async function runEngine(engine, launcher){
     const toasts = () => pp.evaluate(() => window.__toasts.slice());
     const tap = async (i) => { await cells.nth(i).click(); await pp.waitForTimeout(90); };
 
-    // Fase 1 — línea base 100% sin cruce (marcar casillas distintas a "cumplida")
-    for (const i of [0, 1, 2, 3]) await tap(i);
-    ok(engine, "pct color: 100% en verde", (await band()) === "good", await pctText());
-    ok(engine, "pct: sin toast todavía (no ha cruzado nada)", (await toasts()).length === 0);
+    // Fase A — con 1-4 registros el % cruza el 80% en ambos sentidos y NO avisa
+    await tap(0);            // c0 +1  -> 1 reg  -> 100%
+    await tap(0);            // c0 1/2 -> 1 reg  -> 50%   (cruce ABAJO, ignorado)
+    await tap(0);            // c0 -1  -> 1 reg  -> 0%
+    await tap(1);            // c1 +1  -> 2 reg  -> 1/2 = 50%
+    await tap(2);            // c2 +1  -> 3 reg  -> 2/3 = 67%
+    await tap(3);            // c3 +1  -> 4 reg  -> 3/4 = 75%
+    await tap(0);            // c0 -1->vacío -> 3 reg -> 3/3 = 100%  (cruce ARRIBA, ignorado)
+    ok(engine, "pct(<5): color sí cambia — 100% en verde", (await band()) === "good", await pctText());
+    ok(engine, "pct(<5): con menos de 5 registros no sale ningún toast aunque cruce el 80%", (await toasts()).length === 0, JSON.stringify(await toasts()));
 
-    // Fase 2 — cruce hacia ABAJO del 80% (primer aviso de bajada)
-    await tap(4);            // c4 +1 -> 5/5 = 100%
-    await tap(4);            // c4 1/2 -> 90%
-    await tap(4);            // c4 -1 -> 4/5 = 80%
-    await tap(5);            // c5 +1 -> 5/6 = 83%
-    await tap(5);            // c5 1/2 -> 4.5/6 = 75%  => CRUCE ABAJO
-    ok(engine, "pct color: 75% en ámbar", (await band()) === "mid", await pctText());
+    // Fase B — el 5º registro empieza a comparar, pero aún sin % previo => sin toast
+    await tap(0);            // c0 +1 -> 4 reg -> 100%
+    await tap(4);            // c4 +1 -> 5 reg -> 5/5 = 100%  (cruce ARRIBA real, pero sin base previa)
+    ok(engine, "pct(=5): al llegar a 5 registros fija la base sin avisar", (await toasts()).length === 0, JSON.stringify(await toasts()));
+    ok(engine, "pct(=5): 100% en verde", (await band()) === "good", await pctText());
+
+    // Fase C — a partir de aquí el comportamiento ya probado: aviso solo en el cruce real
+    await tap(4);            // c4 1/2 -> 5 reg -> (4+0.5)/5 = 90%   (no cruza)
+    await tap(4);            // c4 -1  -> 5 reg -> 4/5 = 80%          (no cruza)
+    await tap(3);            // c3 1/2 -> 5 reg -> (3+0.5)/5 = 70%    => CRUCE ABAJO
+    ok(engine, "pct: color 70% en ámbar", (await band()) === "mid", await pctText());
     let ts = await toasts();
-    ok(engine, "pct: aviso de bajada al cruzar por debajo del 80%", ts.length === 1 && /bajado del 80/.test(ts[0]), JSON.stringify(ts));
+    ok(engine, "pct(>=5): aviso de bajada al cruzar el 80% de verdad", ts.length === 1 && /bajado del 80/.test(ts[0]), JSON.stringify(ts));
+    await tap(3);            // c3 -1 -> 5 reg -> 3/5 = 60%
+    ok(engine, "pct: color 60% en rojo", (await band()) === "bad", await pctText());
+    ok(engine, "pct(>=5): no repite el aviso mientras sigue por debajo", (await toasts()).length === 1);
 
-    // Fase 3 — sigue por debajo: NO repite
-    await tap(5);            // c5 -1 -> 4/6 = 67%
-    ok(engine, "pct color: 67% en rojo", (await band()) === "bad", await pctText());
-    await tap(6);            // c6 +1 -> 5/7 = 71%
-    ok(engine, "pct: no repite el aviso mientras sigue por debajo del 80%", (await toasts()).length === 1);
-
-    // Fase 4 — cruce hacia ARRIBA del 80% (aviso de felicitación)
-    await tap(7);            // 6/8 = 75%
-    await tap(8);            // 7/9 = 78%
+    // subir de nuevo por encima del 80% con >=5 registros
+    await tap(5); await tap(6); await tap(7); await tap(8);  // 4/6..7/9 -> sigue <80
     await tap(9);            // 8/10 = 80%  => CRUCE ARRIBA
-    ok(engine, "pct color: 80% en verde", (await band()) === "good", await pctText());
+    ok(engine, "pct: color 80% en verde", (await band()) === "good", await pctText());
     ts = await toasts();
-    ok(engine, "pct: felicitación al subir por encima del 80%, una sola vez", ts.length === 2 && /Por encima del 80/.test(ts[1]), JSON.stringify(ts));
-
-    // Fase 5 — sigue por encima: NO repite en cada tap
+    ok(engine, "pct(>=5): felicitación al subir por encima del 80%, una sola vez", ts.length === 2 && /Por encima del 80/.test(ts[1]), JSON.stringify(ts));
     await tap(10);           // 9/11 = 82%
-    await tap(11);           // 10/12 = 83%
-    ok(engine, "pct: 83% verde", (await band()) === "good", await pctText());
-    ok(engine, "pct: NO repite la felicitación mientras sigue por encima del 80%", (await toasts()).length === 2);
-
-    // Fase 6 — vuelve a cruzar hacia abajo (segundo aviso de bajada, también único)
-    await tap(12);           // 11/13 = 85%
-    await tap(0);            // c0 1 -> 1/2 -> 10.5/13 = 81%
-    await tap(0);            // c0 1/2 -> -1 -> 10/13 = 77%  => CRUCE ABAJO
-    ok(engine, "pct color: 77% en ámbar", (await band()) === "mid", await pctText());
-    ts = await toasts();
-    ok(engine, "pct: aviso de bajada de nuevo, una sola vez por cruce", ts.length === 3 && /bajado del 80/.test(ts[2]), JSON.stringify(ts));
-
-    // Fase 7 — sigue por debajo: NO repite; tercer color comprobado
-    await tap(1);            // c1 1 -> 1/2 -> 9.5/13 = 73%
-    await tap(1);            // c1 1/2 -> -1 -> 9/13 = 69%
-    ok(engine, "pct color: 69% en rojo", (await band()) === "bad", await pctText());
-    ok(engine, "pct: no repite el aviso de bajada", (await toasts()).length === 3);
+    ok(engine, "pct(>=5): no repite la felicitación mientras sigue por encima", (await toasts()).length === 2);
 
     await shot(pp, engine, "09-pct");
     ok(engine, "pct: sin errores de JS en el flujo del %", pErr.length === 0, pErr.join(" | "));

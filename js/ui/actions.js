@@ -42,6 +42,6 @@ document.getElementById("clear").onclick = async () => {
   state.data = {};
   await save(monthKey(), state.data);
   renderGrid();
-  syncPctBaseline(renderSummary().pct);
+  { const s = renderSummary(); syncPctBaseline(s.pct, s.logged); }
   toast("Mes borrado");
 };

@@ -206,7 +206,7 @@ document.getElementById("grid").addEventListener("click", async (e) => {
   }
   const s = renderSummary();
   queueSave();
-  await checkPctCrossing(s.pct);
+  await checkPctCrossing(s.pct, s.logged);
 });
 
 document.getElementById("pastToggle").onclick = () => {

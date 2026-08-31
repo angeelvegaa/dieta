@@ -34,5 +34,5 @@ document.addEventListener("visibilitychange", () => {
   checkReminder();
   buildAutoBackup();
   // fija la línea base del % sin avisar: abrir la app nunca dispara el toast
-  syncPctBaseline(s.pct);
+  syncPctBaseline(s.pct, s.logged);
 })();

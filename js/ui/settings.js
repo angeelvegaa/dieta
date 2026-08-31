@@ -95,7 +95,7 @@ document.getElementById("saveMeals").onclick = async () => {
   state.meals = newMeals;
   await save("dieta:comidas", state.meals);
   sheet.classList.remove("open");
-  syncPctBaseline(renderSummary().pct);
+  { const s = renderSummary(); syncPctBaseline(s.pct, s.logged); }
   renderHeader(); renderGrid();
   toast("Comidas actualizadas");
 };
@@ -138,6 +138,6 @@ document.getElementById("importBtn").onclick = async () => {
   state.data = (await load(monthKey())) || {};
   sheet.classList.remove("open");
   renderHeader(); renderGrid(); renderPhaseNote();
-  syncPctBaseline(renderSummary().pct);
+  { const s = renderSummary(); syncPctBaseline(s.pct, s.logged); }
   toast("Datos restaurados");
 };
