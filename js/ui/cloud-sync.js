@@ -10,8 +10,30 @@
 import { toast } from '../toast.js';
 import * as sync from '../sync.js';
 
-const TURNSTILE_SITE_KEY = '0x4AAAAAAAEroqMIQUWfcnssE';
+// Site keys de Turnstile (públicas, no secretas — seguro exponerlas):
+// - REAL: la del dominio angeelvegaa.github.io. OJO: es 0x4 + 6 A's + "Eroq...".
+//   El prompt original la traía con una "A" de más (0x4 + 7 A's), que Turnstile
+//   rechaza con error 400020 y deja el widget en blanco. Mismo typo que hubo
+//   que corregir en la app de gym.
+// - TEST: clave de test oficial de Cloudflare ("widget visible, siempre pasa",
+//   developers.cloudflare.com/turnstile/troubleshooting/testing/). Las claves
+//   de producción rechazan resolver el reto en localhost / navegador de test,
+//   así que en local se usa esta.
+export const TURNSTILE_SITE_KEY_REAL = '0x4AAAAAAEroqMIQUWfcnssE';
+const TURNSTILE_SITE_KEY_TEST = '1x00000000000000000000AA';
 const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+
+// Solo estos hostnames EXACTOS: son los únicos con los que se sirve la app en
+// local (tests/server.mjs, localhost:4599). GitHub Pages nunca sirve la app
+// real bajo "localhost"/"127.0.0.1" (son loopback, no dominios enrutables), así
+// que ningún visitante real cae aquí; solo quien corre su propia copia local.
+const LOCAL_TEST_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
+export function resolveTurnstileSiteKey(hostname) {
+  return LOCAL_TEST_HOSTNAMES.has(hostname) ? TURNSTILE_SITE_KEY_TEST : TURNSTILE_SITE_KEY_REAL;
+}
+const TURNSTILE_SITE_KEY = resolveTurnstileSiteKey(window.location.hostname);
+
+const TURNSTILE_LOAD_ERROR_MSG = 'No se pudo cargar la verificación anti-bot. Revisa tu conexión (o si bloqueas contenido de challenges.cloudflare.com) y recarga la página.';
 
 // Estado efímero de la tarjeta: se reinicia al reabrir Ajustes.
 let wizardOpen = false;
@@ -33,6 +55,7 @@ function el(tag, attrs = {}, kids = []) {
 function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
 
 // --- carga perezosa del script de Turnstile (solo al abrir el asistente) ---
+const TURNSTILE_LOAD_TIMEOUT_MS = 12000;
 let turnstileScriptPromise = null;
 function loadTurnstileScript() {
   if (window.turnstile) return Promise.resolve();
@@ -42,10 +65,19 @@ function loadTurnstileScript() {
       s.src = TURNSTILE_SCRIPT_URL;
       s.async = true;
       s.defer = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('No se pudo cargar la verificación anti-bot.'));
+      // Si el script ni carga ni da error (petición que se queda colgada,
+      // proxy que traga la respuesta...), no dejamos el asistente esperando
+      // para siempre: a los 12 s se considera fallo y se muestra el aviso.
+      const timer = setTimeout(
+        () => reject(new Error('La verificación anti-bot tardó demasiado en cargar.')),
+        TURNSTILE_LOAD_TIMEOUT_MS
+      );
+      s.onload = () => { clearTimeout(timer); resolve(); };
+      s.onerror = () => { clearTimeout(timer); reject(new Error('No se pudo cargar la verificación anti-bot.')); };
       document.head.appendChild(s);
     });
+    // Si falla, no cachees el rechazo: cerrar y reabrir el asistente reintenta.
+    turnstileScriptPromise.catch(() => { turnstileScriptPromise = null; });
   }
   return turnstileScriptPromise;
 }
@@ -155,14 +187,35 @@ function mountWizard(container, { initialEmail = '', onCancel, onDone }) {
     try {
       await loadTurnstileScript();
       if (widgetId !== null) return;
+      if (!window.turnstile) {
+        // El script resolvió pero no dejó window.turnstile (caché vieja,
+        // bloqueado a medias por un content-blocker...). No debería pasar,
+        // pero si pasa hay que verlo, no quedarse en blanco.
+        throw new Error('El script de Turnstile cargó pero window.turnstile no existe.');
+      }
       widgetId = window.turnstile.render(turnstileSlot, {
         sitekey: TURNSTILE_SITE_KEY,
-        callback: (t) => { captchaToken = t; },
+        callback: (t) => {
+          captchaToken = t;
+          // si veníamos de un error de carga y ahora sí resolvió, quítalo
+          if (error === TURNSTILE_LOAD_ERROR_MSG) { error = null; render(); }
+        },
         'expired-callback': () => { captchaToken = null; },
-        'error-callback': () => { captchaToken = null; }
+        'error-callback': (code) => {
+          captchaToken = null;
+          console.error('turnstile: error-callback, código', code,
+            '— sitekey:', TURNSTILE_SITE_KEY, '— hostname:', window.location.hostname);
+          error = `No se pudo verificar que no eres un bot (código ${code}). ` +
+            'Revisa tu conexión o desactiva bloqueadores de contenido para ' +
+            'challenges.cloudflare.com, y vuelve a intentarlo.';
+          render();
+        }
       });
     } catch (err) {
-      console.warn('turnstile: fallo al cargar la verificación anti-bot', err);
+      console.error('turnstile: fallo al cargar/montar la verificación anti-bot', err,
+        '— sitekey:', TURNSTILE_SITE_KEY, '— hostname:', window.location.hostname);
+      error = TURNSTILE_LOAD_ERROR_MSG;
+      render();
     }
   }
   function resetTurnstile() {

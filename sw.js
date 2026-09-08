@@ -7,7 +7,7 @@
    Se sirve desde una subruta (GitHub Pages), así que todas las rutas son
    relativas al propio sw.js. */
 
-const VERSION = "v6";
+const VERSION = "v7";
 const APP_CACHE = "dieta-app-" + VERSION;
 const FONT_CACHE = "dieta-fonts";
 
