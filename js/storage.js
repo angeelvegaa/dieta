@@ -21,6 +21,18 @@ let afterSave = () => {};
    una dependencia circular. */
 export function onAfterSave(fn){ afterSave = fn; }
 
+/* Aviso de escritura, clave a clave, para la copia en la nube (js/sync.js).
+   Con la sincronización apagada (caso por defecto) nadie se suscribe y esto
+   no cuesta nada: la lista está vacía. */
+const writeListeners = [];
+export function onWrite(fn){
+  writeListeners.push(fn);
+  return () => { const i = writeListeners.indexOf(fn); if (i >= 0) writeListeners.splice(i, 1); };
+}
+function notifyWrite(key){
+  for (const fn of writeListeners){ try { fn(key); } catch (e) {} }
+}
+
 export async function load(key){
   if (hasWS){
     try { const r = await window.storage.get(key); if (r) return JSON.parse(r.value); }
@@ -38,6 +50,7 @@ export async function save(key, val){
   const json = JSON.stringify(val);
   if (hasLS){ try { localStorage.setItem(key, json); } catch (e) {} }
   if (hasWS){ try { await window.storage.set(key, json); } catch (e) {} }
+  notifyWrite(key);
   afterSave();
 }
 
@@ -46,7 +59,7 @@ export async function save(key, val){
 export function saveSync(key, val){
   mem[key] = val;
   if (hasLS){
-    try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+    try { localStorage.setItem(key, JSON.stringify(val)); notifyWrite(key); return true; }
     catch (e) {}
   }
   return false;

@@ -250,6 +250,29 @@ select.phase-select{
 .weight-row b{font-family:var(--display);font-variant-numeric:tabular-nums}
 .weight-row .rmw{color:var(--neg);cursor:pointer;font-size:.75rem;margin-left:10px}
 
+/* ---------- copia en la nube ---------- */
+#cloudSyncBody .act{width:100%;flex:none;margin-top:8px}
+#cloudSyncBody input,
+#cloudSyncBody textarea{
+  width:100%;border:1px solid var(--rule);background:var(--surface);
+  border-radius:10px;padding:11px 12px;font-family:var(--body);font-size:.9rem;color:var(--ink);
+  margin-top:8px;box-sizing:border-box;
+}
+#cloudSyncBody textarea{resize:vertical;min-height:64px;line-height:1.4}
+#cloudSyncBody input:focus,
+#cloudSyncBody textarea:focus{outline:2px solid var(--ink);outline-offset:-1px}
+.cloud-msg{font-size:.75rem;color:var(--ink-soft);margin:8px 0 0;line-height:1.5}
+.cloud-msg.warn{color:var(--neg)}
+.recovery-code{
+  font-family:var(--display);font-size:.82rem;font-weight:600;letter-spacing:.02em;
+  background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:10px 12px;margin-top:8px;word-break:break-all;user-select:all;
+}
+.turnstile-slot{margin-top:10px}
+.turnstile-slot:empty{margin-top:0}
+.cloud-actions{display:flex;gap:8px;margin-top:8px}
+.cloud-actions .act{margin-top:0}
+
 /* ---------- recordatorio ---------- */
 .banner{
   background:var(--half-bg);border:1px solid var(--half);color:var(--ink);

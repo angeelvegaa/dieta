@@ -2,7 +2,8 @@
 
 Seguimiento diario de dieta, peso, fases y cumplimiento. HTML + CSS + JS con
 módulos ES nativos: **sin build, sin dependencias, sin backend y sin cuentas**.
-Todos los datos se guardan solo en el dispositivo (`localStorage`).
+Todos los datos se guardan solo en el dispositivo (`localStorage`) — salvo que
+actives tú mismo la copia en la nube (opcional, apagada por defecto).
 
 ## Estructura
 
@@ -15,7 +16,8 @@ js/
   app.js            punto de entrada: importa cada pantalla y arranca el estado
   config.js         constantes
   dates.js          utilidades de fecha
-  storage.js        load / save / listKeys (window.storage → localStorage → memoria)
+  sync.js           copia en la nube (opcional): Supabase + AES-GCM, import dinámico
+  storage.js        load / save / listKeys / onWrite (window.storage → localStorage → memoria)
   state.js          estado mutable + guardado sin botón (síncrono + flush en pagehide)
   backup.js         copia automática y silenciosa tras cada guardado
   modal.js          customConfirm / customPrompt (NO usar confirm/prompt nativos)
@@ -26,6 +28,7 @@ js/
   ui/
     month.js        pantalla principal: rejilla, ciclo de toque, columna Extra, notas
     settings.js     fase actual, comidas del día (con retro), copia de seguridad
+    cloud-sync.js   tarjeta y asistente de activación de la copia en la nube
     history.js      historial de meses + gráfico de % navegable
     weight.js       peso con fecha + gráfico coloreado por fase
     plan.js         "Mi dieta" estructurada por día de la semana
@@ -47,7 +50,49 @@ npm run icons               # regenera los iconos
 node tests/server.mjs       # sirve en http://localhost:4599/dieta/
 npm test                    # e2e en Chromium y WebKit, vertical, todas las pantallas
 npm test chromium           # un solo motor
+npm run test:sync           # pruebas de la copia en la nube (Chromium y WebKit)
 ```
+
+## Copia en la nube (opcional)
+
+Apagada por defecto: quien no la active tiene la app 100% local, sin ninguna
+llamada de red, exactamente igual que antes de que existiera esta función. El
+SDK de Supabase se carga con `import()` dinámico, así que ni siquiera llega al
+navegador mientras el interruptor está apagado.
+
+Quien la activa desde **Ajustes → Copia en la nube**:
+
+- Inicia sesión con email + contraseña (Supabase Auth; hay un widget de
+  Cloudflare Turnstile en el formulario). La confirmación de email está activada:
+  tras crear cuenta hay que confirmarla antes de poder iniciar sesión. Se usa
+  contraseña y no magic link a propósito (esta app no tiene router de hash, pero
+  así el flujo es idéntico al de `gym track` y al "recuperar en un móvil nuevo").
+- Genera una clave de cifrado AES-GCM en el dispositivo (Web Crypto) que nunca
+  sale de él: a Supabase solo sube el valor ya cifrado. La clave se muestra una
+  vez como **código de recuperación**; sin guardarlo aparte no hay forma de
+  recuperar los datos ya sincronizados en un dispositivo nuevo (ni nosotros
+  podemos).
+- `js/sync.js` sube (con debounce de 2 s) cada escritura de las claves
+  sincronizables — `dieta:comidas`, `dieta:fase`, `dieta:faseHistory`,
+  `dieta:peso`, `dieta:planStructured` y cada mes `dieta:AAAA-MM` — y al abrir la
+  app baja y fusiona por "último cambio gana" (sin resolución de conflictos
+  compleja). Quedan fuera la copia de seguridad local y la línea base del aviso
+  de %, que son propias de cada dispositivo.
+- El proyecto de Supabase está **compartido con la app de running**: la tabla
+  `sync_data` tiene una columna `app` (aquí siempre `'dieta'`) para no mezclar
+  datos. La seguridad va por RLS sobre `user_id`: cada cuenta solo lee/escribe
+  sus propias filas, verificado en la base de datos.
+
+El test de ida y vuelta real (`npm run test:sync` con credenciales) requiere una
+cuenta ya confirmada (Dashboard → Authentication → Users → Add user → marca
+"Auto Confirm User"):
+
+```bash
+DIETA_SYNC_TEST_EMAIL=... DIETA_SYNC_TEST_PASSWORD=... npm run test:sync
+```
+
+Sin esas variables ese bloque se salta solo; el resto (incluido "cero red con el
+interruptor apagado", en Chromium y WebKit) corre siempre.
 
 ## Publicar una versión nueva
 
