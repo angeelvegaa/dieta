@@ -9,6 +9,10 @@
       sin tocar Supabase hasta que la persona envía el formulario.
    3. Si Turnstile no carga / falla, sale un aviso VISIBLE en la pantalla (no
       se queda en blanco). Y la Site Key real del código es la correcta.
+   4. El asistente deja elegir entre "crear cuenta nueva" e "iniciar sesión".
+      Escenario Safari: se crea una cuenta (queda sin sesión por la confirmación
+      de email), y desde otra sesión limpia se entra con "iniciar sesión" y la
+      sincronización se activa. Contra un Supabase simulado (override de fetch).
 
    Uso:  node tests/sync.mjs            (ambos motores)
          node tests/sync.mjs chromium   (uno)
@@ -47,6 +51,86 @@ function ok(engine, name, cond, detail = "") {
 }
 
 const ctxOpts = { viewport: { width: 390, height: 844 }, hasTouch: true, locale: "es-ES", timezoneId: "Europe/Madrid" };
+
+// Abre el asistente de "Copia en la nube" y elige el modo (crear cuenta /
+// iniciar sesión), dejando el formulario de email+contraseña a la vista.
+async function openWizard(page, mode) {
+  await page.click("#cloudActivate");
+  const btn = mode === "signin" ? "Ya tengo cuenta — iniciar sesión" : "Crear una cuenta nueva";
+  await page.getByRole("button", { name: btn }).click();
+  await page.waitForSelector('#cloudSyncBody input[type="email"]');
+}
+
+// Espera a que el widget de Turnstile (clave de test) resuelva el reto y deje
+// el token en el input oculto.
+async function waitForCaptcha(page) {
+  await page.waitForFunction(() => {
+    const i = document.querySelector('.turnstile-slot input[name="cf-turnstile-response"]');
+    return !!(i && i.value && i.value.length > 0);
+  }, null, { timeout: 12000 });
+}
+
+// Se inyecta con addInitScript ANTES de cargar la app: sustituye window.fetch
+// para responder localmente a las llamadas al proyecto de Supabase (auth y
+// rest/sync_data). Evita CORS/preflight y no toca la red real. El SDK se sigue
+// bajando de verdad de esm.sh (import() no pasa por fetch).
+function supaMockInit(cfg) {
+  const known = new Map(cfg.known);          // "email password" -> userId
+  const confirmed = new Set(cfg.confirmed);
+  window.__supa = { signups: 0, pulls: 0, pushes: 0, tokenGrants: [] };
+  const REAL = window.fetch.bind(window);
+
+  function jwt(payload) {
+    const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+    return b64({ alg: "HS256", typ: "JWT" }) + "." + b64(payload) + ".sig";
+  }
+  function session(uid, email) {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      access_token: jwt({ sub: uid, email, role: "authenticated", aud: "authenticated", iat: now, exp: now + 3600 }),
+      token_type: "bearer", expires_in: 3600, expires_at: now + 3600,
+      refresh_token: "rt-" + uid,
+      user: { id: uid, email, aud: "authenticated", role: "authenticated" }
+    };
+  }
+
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    if (!/supabase\.co\/(auth|rest)\/v1\//.test(url)) return REAL(input, init);
+    const u = new URL(url, location.href);
+    const method = (init.method || (input && input.method) || "GET").toUpperCase();
+    let body = {};
+    try { const raw = init.body || (input && input.body); if (raw) body = JSON.parse(raw); } catch { /* noop */ }
+    const R = (status, obj) => new Response(obj == null ? null : JSON.stringify(obj),
+      { status, headers: { "content-type": "application/json" } });
+
+    if (u.pathname.endsWith("/auth/v1/signup")) {
+      window.__supa.signups++;
+      // confirmación de email ON -> sin sesión, solo el objeto usuario
+      return R(200, { id: "u-" + body.email, email: body.email, confirmed_at: null, identities: [], aud: "authenticated", role: "authenticated" });
+    }
+    if (u.pathname.endsWith("/auth/v1/token")) {
+      const grant = u.searchParams.get("grant_type");
+      window.__supa.tokenGrants.push(grant);
+      if (grant === "password") {
+        const k = body.email + " " + body.password;
+        if (!known.has(k)) return R(400, { error: "invalid_grant", error_description: "Invalid login credentials" });
+        if (!confirmed.has(k)) return R(400, { error: "invalid_grant", error_description: "Email not confirmed" });
+        return R(200, session(known.get(k), body.email));
+      }
+      if (grant === "refresh_token") return R(200, session("u-refresh", "x@x"));
+      return R(400, { error: "unsupported_grant_type" });
+    }
+    if (u.pathname.endsWith("/auth/v1/user")) return R(200, { id: "u-x", email: "x@x", aud: "authenticated", role: "authenticated" });
+    if (u.pathname.endsWith("/auth/v1/logout")) return R(204, null);
+    if (u.pathname.endsWith("/rest/v1/sync_data")) {
+      if (method === "GET") { window.__supa.pulls++; return R(200, []); }
+      if (method === "POST") { window.__supa.pushes++; return R(201, []); }
+      if (method === "DELETE") return R(204, null);
+    }
+    return R(404, { error: "unmocked " + method + " " + u.pathname });
+  };
+}
 
 async function runEngine(engine, launcher) {
   const browser = await launcher.launch();
@@ -96,6 +180,10 @@ async function runEngine(engine, launcher) {
 
   // ---- 2. abrir el asistente: carga Turnstile, NO toca Supabase ----
   await page.click("#cloudActivate");
+  ok(engine, "el asistente empieza pidiendo elegir: crear cuenta / iniciar sesión",
+    (await page.getByRole("button", { name: "Crear una cuenta nueva" }).isVisible()) &&
+    (await page.getByRole("button", { name: "Ya tengo cuenta — iniciar sesión" }).isVisible()));
+  await page.getByRole("button", { name: "Crear una cuenta nueva" }).click();
   await page.waitForSelector('#cloudSyncBody input[type="email"]');
   ok(engine, "el asistente pide email y contraseña",
     (await page.locator('#cloudSyncBody input[type="email"]').isVisible()) &&
@@ -158,8 +246,7 @@ async function runTurnstileFailure(engine, launcher, mode) {
   await p.waitForSelector("#grid .cell");
   await p.click("#gear");
   await p.waitForSelector("#sheet.open");
-  await p.click("#cloudActivate");
-  await p.waitForSelector('#cloudSyncBody input[type="email"]');
+  await openWizard(p, "signup");
   await p.waitForFunction(
     () => /⚠[^]*verific/i.test(document.getElementById("cloudSyncBody").textContent),
     null, { timeout: 8000 }
@@ -187,15 +274,11 @@ async function runLive(engine, launcher) {
 
   await pageA.click("#gear");
   await pageA.waitForSelector("#sheet.open");
-  await pageA.click("#cloudActivate");
-  await pageA.waitForSelector('#cloudSyncBody input[type="email"]');
-  // Turnstile en test: usa la clave de test que siempre pasa si el proyecto
-  // lo permite; si no, este bloque necesita interacción manual. Se intenta y,
-  // si el botón no avanza en 15s, se marca como skip informativo.
+  await openWizard(pageA, "signin");
   await pageA.locator('#cloudSyncBody input[type="email"]').fill(EMAIL);
   await pageA.locator('#cloudSyncBody input[type="password"]').fill(PASSWORD);
   await pageA.waitForTimeout(3000);
-  await pageA.getByRole("button", { name: "Iniciar sesión" }).click();
+  await pageA.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
 
   const genBtn = pageA.getByRole("button", { name: /primera vez que activo/i });
   const contBtn = pageA.getByRole("button", { name: "Continuar" });
@@ -236,12 +319,11 @@ async function runLive(engine, launcher) {
   await pageB.waitForSelector("#grid .cell");
   await pageB.click("#gear");
   await pageB.waitForSelector("#sheet.open");
-  await pageB.click("#cloudActivate");
-  await pageB.waitForSelector('#cloudSyncBody input[type="email"]');
+  await openWizard(pageB, "signin");
   await pageB.locator('#cloudSyncBody input[type="email"]').fill(EMAIL);
   await pageB.locator('#cloudSyncBody input[type="password"]').fill(PASSWORD);
   await pageB.waitForTimeout(3000);
-  await pageB.getByRole("button", { name: "Iniciar sesión" }).click();
+  await pageB.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
   const codeArea = pageB.getByPlaceholder(/pega aquí tu código/i);
   await codeArea.waitFor({ state: "visible", timeout: 20000 });
   await codeArea.fill(code);
@@ -259,6 +341,106 @@ async function runLive(engine, launcher) {
   await browser.close();
 }
 
+// Escenario Safari, contra un Supabase simulado:
+//  1. "Safari" crea la cuenta -> confirmación de email ON -> se queda SIN sesión.
+//  2. El usuario confirma el email (en Safari, fuera de la app instalada).
+//  3. "App instalada" (storage limpio, sin sesión): con "Iniciar sesión" y las
+//     mismas credenciales, la sincronización SÍ se activa.
+async function runSigninAfterSignup(engine, launcher) {
+  const browser = await launcher.launch();
+  const acctEmail = `dieta-e2e-${Date.now()}@example.com`;
+  const acctPass = "clave-de-prueba-123";
+  const acctKey = acctEmail + " " + acctPass;
+
+  // --- 1. "Safari": crear cuenta (existe en el servidor pero SIN confirmar) ---
+  const ctxA = await browser.newContext(ctxOpts);
+  await ctxA.addInitScript(supaMockInit, { known: [[acctKey, "u-1"]], confirmed: [] });
+  const A = await ctxA.newPage();
+  const aErr = [];
+  A.on("pageerror", (e) => aErr.push(String(e)));
+  await A.goto(BASE, { waitUntil: "load" });
+  await A.waitForSelector("#grid .cell");
+  await A.click("#gear");
+  await A.waitForSelector("#sheet.open");
+  await openWizard(A, "signup");
+  await A.locator('#cloudSyncBody input[type="email"]').fill(acctEmail);
+  await A.locator('#cloudSyncBody input[type="password"]').fill(acctPass);
+  await waitForCaptcha(A);
+  await A.getByRole("button", { name: "Crear cuenta", exact: true }).click();
+  await A.waitForFunction(
+    () => /email de confirmaci/i.test(document.getElementById("cloudSyncBody").textContent),
+    null, { timeout: 10000 }
+  ).catch(() => {});
+  ok(engine, "signup: tras crear la cuenta pide confirmar el email",
+    /email de confirmaci/i.test(await A.textContent("#cloudSyncBody")));
+  ok(engine, "signup: crear la cuenta NO activa la sync por sí solo",
+    (await A.evaluate(() => localStorage.getItem("dieta.sync.enabled"))) !== "true");
+  ok(engine, "signup: no hay sesión de Supabase guardada",
+    !(await A.evaluate(() => Object.keys(localStorage).some((k) => /sb-.*-auth-token/.test(k)))));
+  ok(engine, "signup: sin errores de JS", aErr.length === 0, aErr.slice(0, 2).join(" | "));
+
+  // en el mismo asistente: "‹ Cambiar" -> iniciar sesión, pero el email aún no
+  // está confirmado -> aviso claro (no un error genérico ni pantalla en blanco)
+  await A.getByRole("button", { name: /Cambiar/ }).click();
+  await A.getByRole("button", { name: "Ya tengo cuenta — iniciar sesión" }).click();
+  await A.locator('#cloudSyncBody input[type="email"]').fill(acctEmail);
+  await A.locator('#cloudSyncBody input[type="password"]').fill(acctPass);
+  await waitForCaptcha(A);
+  await A.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
+  await A.waitForFunction(
+    () => /no está confirmado/i.test(document.getElementById("cloudSyncBody").textContent),
+    null, { timeout: 10000 }
+  ).catch(() => {});
+  ok(engine, "signin sin confirmar: aviso claro de que falta confirmar el email",
+    /no está confirmado/i.test(await A.textContent("#cloudSyncBody")));
+  await ctxA.close();
+
+  // --- 2. el usuario abre el enlace de confirmación (en Safari) ---
+  const known = [[acctKey, "u-1"]];
+  const confirmed = [acctKey];
+
+  // --- 3. "App instalada": storage limpio, sin sesión -> iniciar sesión ---
+  const ctxB = await browser.newContext(ctxOpts);
+  await ctxB.addInitScript(supaMockInit, { known, confirmed });
+  const B = await ctxB.newPage();
+  const bErr = [];
+  B.on("pageerror", (e) => bErr.push(String(e)));
+  await B.goto(BASE, { waitUntil: "load" });
+  await B.waitForSelector("#grid .cell");
+  await B.locator("#grid .cell:not(.extra)").first().click(); // un dato local que subir
+  await B.click("#gear");
+  await B.waitForSelector("#sheet.open");
+  ok(engine, "app instalada: arranca SIN sesión (sync apagada)",
+    (await B.evaluate(() => localStorage.getItem("dieta.sync.enabled"))) !== "true");
+
+  await openWizard(B, "signin");
+  await B.locator('#cloudSyncBody input[type="email"]').fill(acctEmail);
+  await B.locator('#cloudSyncBody input[type="password"]').fill(acctPass);
+  await waitForCaptcha(B);
+  await B.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
+
+  // el login lleva al paso de clave de cifrado: genera una nueva y termina
+  await B.getByRole("button", { name: /primera vez que activo/i }).click({ timeout: 15000 });
+  await B.getByRole("button", { name: /Ya lo he guardado/i }).click();
+  await B.getByText(/Sincronizando con/).waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+
+  const enabled = await B.evaluate(() => localStorage.getItem("dieta.sync.enabled"));
+  const hasSession = await B.evaluate(() => Object.keys(localStorage).some((k) => /sb-.*-auth-token/.test(k)));
+  const grants = await B.evaluate(() => window.__supa && window.__supa.tokenGrants);
+  ok(engine, "signin: con la cuenta existente ya confirmada, la sync se ACTIVA",
+    enabled === "true" && /Sincronizando con/.test(await B.textContent("#cloudSyncBody")));
+  ok(engine, "signin: llamó a /token?grant_type=password (signInWithPassword), no a /signup",
+    Array.isArray(grants) && grants.includes("password"));
+  ok(engine, "signin: la sesión de Supabase queda guardada en la app instalada",
+    hasSession);
+  ok(engine, "signin: subió los datos locales a la nube (push a sync_data)",
+    (await B.evaluate(() => window.__supa && window.__supa.pushes)) >= 1);
+  ok(engine, "signin: sin errores de JS", bErr.length === 0, bErr.slice(0, 2).join(" | "));
+
+  await ctxB.close();
+  await browser.close();
+}
+
 const server = await start();
 console.log("probando contra " + BASE + "\n");
 try {
@@ -271,6 +453,7 @@ try {
     await runEngine(name, launcher);
     await runTurnstileFailure(name, launcher, "render-throws");
     await runTurnstileFailure(name, launcher, "error-callback");
+    await runSigninAfterSignup(name, launcher);
   }
   if (EMAIL && PASSWORD) {
     console.log("\n--- ida y vuelta real contra Supabase ---");

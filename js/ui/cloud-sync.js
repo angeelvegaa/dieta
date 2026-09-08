@@ -166,13 +166,18 @@ export function renderCloudSync() {
 // (turnstileSlot) que NO se borra en cada render, para que escribir en el
 // email/contraseña no lo reinicie.
 function mountWizard(container, { initialEmail = '', onCancel, onDone }) {
-  let step = 'auth'; // 'auth' | 'key-choice' | 'show-code' | 'ready'
+  // 'mode-choice' -> 'auth' -> 'key-choice' -> 'show-code' -> 'ready'
+  let step = 'mode-choice';
+  let mode = null; // 'signup' | 'signin', se elige en 'mode-choice'
   let email = initialEmail;
+  let password = '';
   let busy = false;
   let error = null;
   let generatedCode = null;
   let captchaToken = null;
   let widgetId = null;
+  let turnstileStarted = false;
+  let offerSwitchToSignin = false;
 
   clear(container);
   const topWrap = el('div', {});
@@ -180,8 +185,15 @@ function mountWizard(container, { initialEmail = '', onCancel, onDone }) {
   const bottomWrap = el('div', {});
   container.append(topWrap, turnstileSlot, bottomWrap);
 
-  mountTurnstile();
   render();
+
+  // El widget se monta al entrar al paso 'auth' (no antes): renderizarlo dentro
+  // de un contenedor oculto puede dejarlo en blanco al mostrarlo luego.
+  function ensureTurnstile() {
+    if (turnstileStarted) return;
+    turnstileStarted = true;
+    mountTurnstile();
+  }
 
   async function mountTurnstile() {
     try {
@@ -245,22 +257,45 @@ function mountWizard(container, { initialEmail = '', onCancel, onDone }) {
     const bottom = el('div', {});
     if (error) top.appendChild(el('p', { class: 'cloud-msg warn', text: `⚠ ${error}` }));
 
+    if (step === 'mode-choice') {
+      top.appendChild(el('p', {
+        class: 'cloud-msg',
+        text: 'Para sincronizar necesitas una cuenta (solo email y contraseña, para identificar tus datos cifrados).'
+      }));
+      const goAuth = (m) => { mode = m; step = 'auth'; error = null; render(); ensureTurnstile(); };
+      bottom.appendChild(el('button', { class: 'act', text: 'Crear una cuenta nueva', onClick: () => goAuth('signup') }));
+      bottom.appendChild(el('button', { class: 'act', text: 'Ya tengo cuenta — iniciar sesión', onClick: () => goAuth('signin') }));
+      bottom.appendChild(el('button', { class: 'act', text: 'Cancelar', onClick: () => { destroyTurnstile(); onCancel(); } }));
+      return { top, bottom };
+    }
+
     if (step === 'auth') {
+      const signin = mode === 'signin';
+      top.appendChild(el('p', { class: 'cloud-msg', text: signin ? 'Inicia sesión con tu cuenta.' : 'Crea una cuenta nueva.' }));
       const emailInput = el('input', { type: 'email', placeholder: 'tu@email.com', value: email, autocomplete: 'email' });
-      const passwordInput = el('input', { type: 'password', placeholder: 'Contraseña (mín. 6 caracteres)', autocomplete: 'current-password' });
+      const passwordInput = el('input', {
+        type: 'password',
+        placeholder: signin ? 'Contraseña' : 'Contraseña (mín. 6 caracteres)',
+        value: password,
+        autocomplete: signin ? 'current-password' : 'new-password'
+      });
       emailInput.addEventListener('input', () => { email = emailInput.value; });
+      passwordInput.addEventListener('input', () => { password = passwordInput.value; });
       top.append(emailInput, passwordInput);
 
-      const runAuth = async (fn) => {
+      const runAuth = async () => {
         if (busy) return;
-        if (!emailInput.value || !passwordInput.value) { error = 'Rellena email y contraseña.'; render(); return; }
+        const em = email.trim(), pw = password;
+        if (!em || !pw) { error = 'Rellena email y contraseña.'; render(); return; }
         if (!captchaToken) { error = 'Completa la verificación anti-bot de arriba antes de continuar.'; render(); return; }
         busy = true; error = null; render();
         try {
-          const result = await fn(emailInput.value.trim(), passwordInput.value, captchaToken);
+          const fn = signin ? sync.signIn : sync.signUp;
+          const result = await fn(em, pw, captchaToken);
           busy = false;
           if (result.confirmEmailRequired) {
-            error = 'Cuenta creada. Revisa tu email para confirmarla y luego vuelve aquí e inicia sesión.';
+            error = 'Cuenta creada. Abre el enlace del email de confirmación (aunque sea en otro navegador) ' +
+              'y luego vuelve aquí y elige "Ya tengo cuenta — iniciar sesión".';
             resetTurnstile(); render(); return;
           }
           email = result.email;
@@ -269,16 +304,28 @@ function mountWizard(container, { initialEmail = '', onCancel, onDone }) {
         } catch (err) {
           busy = false;
           error = translateAuthError(err);
+          // Si al crear cuenta el email ya existe, ofrece saltar a iniciar sesión.
+          offerSwitchToSignin = !signin && /User already registered/i.test((err && err.message) || '');
           resetTurnstile(); // el token de Turnstile es de un solo uso
           render();
         }
       };
 
+      bottom.appendChild(el('button', {
+        class: 'act', text: busy ? '…' : (signin ? 'Iniciar sesión' : 'Crear cuenta'),
+        onClick: runAuth
+      }));
+      if (offerSwitchToSignin) {
+        bottom.appendChild(el('button', {
+          class: 'act',
+          text: 'Iniciar sesión con esa cuenta',
+          onClick: () => { mode = 'signin'; error = null; offerSwitchToSignin = false; resetTurnstile(); render(); }
+        }));
+      }
       bottom.appendChild(el('div', { class: 'cloud-actions' }, [
-        el('button', { class: 'act', text: busy ? '…' : 'Crear cuenta', onClick: () => runAuth(sync.signUp) }),
-        el('button', { class: 'act', text: busy ? '…' : 'Iniciar sesión', onClick: () => runAuth(sync.signIn) })
+        el('button', { class: 'act', text: '‹ Cambiar', onClick: () => { step = 'mode-choice'; error = null; offerSwitchToSignin = false; render(); } }),
+        el('button', { class: 'act', text: 'Cancelar', onClick: () => { destroyTurnstile(); onCancel(); } })
       ]));
-      bottom.appendChild(el('button', { class: 'act', text: 'Cancelar', onClick: () => { destroyTurnstile(); onCancel(); } }));
       return { top, bottom };
     }
 
@@ -338,8 +385,9 @@ function mountWizard(container, { initialEmail = '', onCancel, onDone }) {
 
 function translateAuthError(err) {
   const msg = (err && err.message) || '';
-  if (/Invalid login credentials/i.test(msg)) return 'Email o contraseña incorrectos (o email sin confirmar todavía).';
-  if (/User already registered/i.test(msg)) return 'Ya existe una cuenta con ese email. Usa "Iniciar sesión".';
+  if (/Email not confirmed/i.test(msg)) return 'Tu email aún no está confirmado. Abre el enlace del correo de confirmación y vuelve a intentarlo.';
+  if (/Invalid login credentials/i.test(msg)) return 'Email o contraseña incorrectos (o el email aún no está confirmado).';
+  if (/User already registered/i.test(msg)) return 'Ya existe una cuenta con ese email. Inicia sesión en vez de crearla.';
   if (/Password should be at least/i.test(msg)) return 'La contraseña debe tener al menos 6 caracteres.';
   return msg || 'Ha ocurrido un error. Inténtalo de nuevo.';
 }

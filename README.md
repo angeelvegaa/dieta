@@ -62,11 +62,16 @@ navegador mientras el interruptor está apagado.
 
 Quien la activa desde **Ajustes → Copia en la nube**:
 
-- Inicia sesión con email + contraseña (Supabase Auth; hay un widget de
-  Cloudflare Turnstile en el formulario). La confirmación de email está activada:
-  tras crear cuenta hay que confirmarla antes de poder iniciar sesión. Se usa
-  contraseña y no magic link a propósito (esta app no tiene router de hash, pero
-  así el flujo es idéntico al de `gym track` y al "recuperar en un móvil nuevo").
+- El asistente pregunta primero: **crear una cuenta nueva** o **iniciar sesión
+  con una cuenta que ya existe**. Ambas con el mismo formulario email + contraseña
+  + widget de Cloudflare Turnstile (Supabase Auth: `signUp` vs
+  `signInWithPassword`). "Iniciar sesión" es imprescindible cuando el email de
+  confirmación se abre en otro navegador: la cuenta queda creada y confirmada en
+  el servidor, pero la sesión no persiste en este dispositivo hasta que se entra
+  con ella. La confirmación de email está activada: tras crear cuenta hay que
+  confirmarla antes de poder iniciar sesión. Contraseña y no magic link a
+  propósito (esta app no tiene router de hash, pero así el flujo es idéntico al
+  de `gym track`).
 - Genera una clave de cifrado AES-GCM en el dispositivo (Web Crypto) que nunca
   sale de él: a Supabase solo sube el valor ya cifrado. La clave se muestra una
   vez como **código de recuperación**; sin guardarlo aparte no hay forma de
