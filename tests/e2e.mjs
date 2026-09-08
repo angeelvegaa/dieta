@@ -6,6 +6,10 @@
    - el guardado sobrevive a recargas,
    - el service worker cachea y la app abre sin red (Chromium).
 
+   La fecha "hoy" se fija con un reloj falso (page.clock.setFixedTime) a un
+   valor conocido —ver TODAY—, así que la suite pasa igual se ejecute el día
+   que se ejecute, sin depender de la fecha real de la máquina.
+
    Uso:  npm test            (ambos motores)
          npm test chromium   (uno)
 */
@@ -23,6 +27,25 @@ const PREFIX = REMOTE ? new URL(REMOTE).pathname.replace(/\/$/, "") : LOCAL_PREF
 const SHOTS = "/private/tmp/claude-501/-Users-angelvegabailon/fca1f419-a0ca-4117-9080-8fad727f1c83/scratchpad/shots";
 const only = process.argv[2];
 const ENGINES = [["chromium", chromium], ["webkit", webkit]].filter(([n]) => !only || n === only);
+
+// "Hoy" FIJO para toda la suite, con reloj falso (page.clock.setFixedTime),
+// para que la prueba no dependa de la fecha real de la máquina. Debe ser el
+// ÚLTIMO día del mes: así la rejilla plegada muestra solo hoy (6 casillas).
+// El mes anterior con datos es julio (lo crea la sección J).
+// Las horas se fijan en UTC y se traducen a Europe/Madrid (tz del contexto):
+// en verano Madrid = UTC+2, así que 10:00Z = 12:00 y 19:30Z = 21:30.
+const TODAY = "2026-08-31";
+const MONTH_NOW = "Agosto";
+const MONTH_PREV = "Julio";
+const NOON_UTC = "T10:00:00Z";
+const EVENING_UTC = "T19:30:00Z"; // pasadas las 20h en Madrid: dispara el recordatorio
+
+async function pinClock(page, isoTime = NOON_UTC){
+  // setFixedTime NO congela los timers (setTimeout de la pulsación larga, del
+  // guardado con debounce, etc. siguen corriendo con el reloj real): solo fija
+  // lo que devuelven Date.now() y new Date().
+  await page.clock.setFixedTime(new Date(TODAY + isoTime));
+}
 
 let pass = 0, fail = 0;
 const log = [];
@@ -89,6 +112,7 @@ async function runEngine(engine, launcher){
   page.on("console", (m) => { if (m.type() === "error") pageErrors.push("console: " + m.text()); });
 
   // ---------- A. carga ----------
+  await pinClock(page);
   await page.goto(BASE, { waitUntil: "load" });
   await page.waitForSelector("#grid .cell", { timeout: 8000 });
   // deja asentar fuentes / SW en el primer arranque para que los setTimeout
@@ -97,7 +121,7 @@ async function runEngine(engine, launcher){
   await page.waitForTimeout(300);
   const cells0 = await page.locator("#grid .cell").count();
   ok(engine, "carga: rejilla solo con el día de hoy (6 casillas)", cells0 === 6, `${cells0}`);
-  ok(engine, "carga: cabecera muestra el mes", /Agosto/i.test(await page.textContent("#monthLabel")));
+  ok(engine, "carga: cabecera muestra el mes", (await page.textContent("#monthLabel")).includes(MONTH_NOW));
   ok(engine, "carga: sin errores de consola/JS", pageErrors.length === 0, pageErrors.join(" | "));
   await shot(page, engine, "01-inicio");
 
@@ -156,7 +180,7 @@ async function runEngine(engine, launcher){
   await page.waitForSelector("#notesSheet.open");
   const noteRows = await page.locator("#notesList .hist-row").count();
   ok(engine, "notas: lista todas las notas añadidas", noteRows >= 3, `${noteRows}`);
-  ok(engine, "notas: cada nota lleva su fecha", (await page.textContent("#notesList")).includes("2026-08-31"));
+  ok(engine, "notas: cada nota lleva su fecha", (await page.textContent("#notesList")).includes(TODAY));
   await shot(page, engine, "02-notas");
   await page.locator("#notesSheet").click({ position: { x: 6, y: 6 } });
   await page.waitForSelector("#notesSheet", { state: "hidden" });
@@ -181,21 +205,21 @@ async function runEngine(engine, launcher){
 
   // ---------- J. navegación entre meses + persistencia ----------
   await page.click("#prev");
-  await page.waitForFunction(() => document.getElementById("monthLabel").textContent.includes("Julio"));
-  ok(engine, "meses: retrocede a Julio", true);
+  await page.waitForFunction((m) => document.getElementById("monthLabel").textContent.includes(m), MONTH_PREV);
+  ok(engine, `meses: retrocede a ${MONTH_PREV}`, true);
   await page.locator("#grid .cell:not(.extra)").first().click();
   ok(engine, "meses: se puede registrar en un mes pasado", (await page.locator("#grid .cell:not(.extra)").first().getAttribute("data-s")) === "1");
   await page.waitForTimeout(450);
   await page.reload({ waitUntil: "load" });
   await page.waitForSelector("#grid .cell");
-  ok(engine, "meses: al recargar vuelve al mes actual (Agosto)", (await page.textContent("#monthLabel")).includes("Agosto"));
+  ok(engine, `meses: al recargar vuelve al mes actual (${MONTH_NOW})`, (await page.textContent("#monthLabel")).includes(MONTH_NOW));
   await page.click("#prev");
-  await page.waitForFunction(() => document.getElementById("monthLabel").textContent.includes("Julio"));
-  ok(engine, "meses: el registro de Julio se guardó", (await page.locator("#grid .cell:not(.extra)").first().getAttribute("data-s")) === "1");
+  await page.waitForFunction((m) => document.getElementById("monthLabel").textContent.includes(m), MONTH_PREV);
+  ok(engine, `meses: el registro de ${MONTH_PREV} se guardó`, (await page.locator("#grid .cell:not(.extra)").first().getAttribute("data-s")) === "1");
 
   // ---------- K. historial de meses ----------
   await page.click("#next");
-  await page.waitForFunction(() => document.getElementById("monthLabel").textContent.includes("Agosto"));
+  await page.waitForFunction((m) => document.getElementById("monthLabel").textContent.includes(m), MONTH_NOW);
   await page.click("#history");
   await page.waitForSelector("#histSheet.open");
   const histRows = await page.locator("#histList .hist-row").count();
@@ -203,11 +227,11 @@ async function runEngine(engine, launcher){
   const histCurveShown = await page.evaluate(() => getComputedStyle(document.getElementById("histCurve")).display !== "none" && document.getElementById("histCurve").children.length > 0);
   ok(engine, "historial: el gráfico de % se dibuja con 2 meses", histCurveShown);
   await shot(page, engine, "04-historial");
-  await page.locator("#histList .hist-row", { hasText: "Julio" }).click();
-  await page.waitForFunction(() => document.getElementById("monthLabel").textContent.includes("Julio"));
+  await page.locator("#histList .hist-row", { hasText: MONTH_PREV }).click();
+  await page.waitForFunction((m) => document.getElementById("monthLabel").textContent.includes(m), MONTH_PREV);
   ok(engine, "historial: al tocar un mes se abre ese mes", true);
   await page.click("#next");
-  await page.waitForFunction(() => document.getElementById("monthLabel").textContent.includes("Agosto"));
+  await page.waitForFunction((m) => document.getElementById("monthLabel").textContent.includes(m), MONTH_NOW);
 
   // ---------- L. fase actual + peso ----------
   await page.click("#gear");
@@ -220,7 +244,7 @@ async function runEngine(engine, launcher){
 
   await page.click("#weightBtn");
   await page.waitForSelector("#weightSheet.open");
-  ok(engine, "peso: la fecha por defecto es hoy", (await page.inputValue("#weightDate")) === "2026-08-31");
+  ok(engine, "peso: la fecha por defecto es hoy", (await page.inputValue("#weightDate")) === TODAY);
   await page.fill("#weightInput", "80.5");
   await page.click("#weightSave");
   await page.waitForTimeout(150);
@@ -332,6 +356,7 @@ async function runEngine(engine, launcher){
     const pp = await pctCtx.newPage();
     const pErr = [];
     pp.on("pageerror", (e) => pErr.push(String(e)));
+    await pinClock(pp);
     await pp.goto(BASE, { waitUntil: "load" });
     await pp.waitForSelector("#grid .cell");
     await pp.waitForLoadState("networkidle").catch(() => {});
@@ -389,7 +414,7 @@ async function runEngine(engine, launcher){
   // ---------- P. recordatorio de las 20h (contexto limpio + reloj falso) ----------
   const remCtx = await browser.newContext({ ...ctxOpts });
   const remPage = await remCtx.newPage();
-  await remPage.clock.install({ time: new Date("2026-08-31T21:30:00") });
+  await pinClock(remPage, EVENING_UTC);
   await remPage.goto(BASE, { waitUntil: "load" });
   await remPage.waitForSelector("#grid .cell");
   await remPage.waitForTimeout(200);
@@ -414,6 +439,7 @@ async function runEngine(engine, launcher){
   if (engine === "chromium"){
     const swCtx = await browser.newContext({ ...ctxOpts });
     const swPage = await swCtx.newPage();
+    await pinClock(swPage);
     await swPage.goto(BASE, { waitUntil: "load" });
     await swPage.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 8000 }).catch(() => {});
     const scope = await swPage.evaluate(async () => {
@@ -437,6 +463,7 @@ async function runEngine(engine, launcher){
         try { sessionStorage.setItem("navs", String((+sessionStorage.getItem("navs") || 0) + 1)); } catch (e) {}
       });
       const upPage = await upCtx.newPage();
+      await pinClock(upPage);
       await upPage.goto(BASE, { waitUntil: "load" });
       await upPage.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 8000 }).catch(() => {});
       const navsBefore = await upPage.evaluate(() => +sessionStorage.getItem("navs"));
