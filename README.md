@@ -13,7 +13,9 @@ manifest.json       metadatos de instalación (rutas relativas → sirve en cual
 sw.js               service worker: cache-first, versionado, actualización automática
 css/app.css         estilos (idénticos al archivo original)
 js/
-  app.js            punto de entrada: importa cada pantalla y arranca el estado
+  boot.js           ruta de entrada: app normal, o vista de texto plano si ?autoexport=1
+  app.js            importa cada pantalla y arranca el estado
+  autoexport.js     resumen del último mes en texto plano para una automatización externa
   config.js         constantes
   dates.js          utilidades de fecha
   sync.js           copia en la nube (opcional): Supabase + AES-GCM, import dinámico
@@ -52,6 +54,20 @@ npm test                    # e2e en Chromium y WebKit, vertical, todas las pant
 npm test chromium           # un solo motor
 npm run test:sync           # pruebas de la copia en la nube (Chromium y WebKit)
 ```
+
+## Exportación de texto plano (`?autoexport=1`)
+
+Al abrir la app con `?autoexport=1` explícito en la URL, en vez de la interfaz
+normal se pinta un único bloque `<pre>` de texto plano con un resumen
+estructurado (fase, plan objetivo, cumplimiento por semanas, peso y detalle
+diario) de los **últimos 35 días** a partir de los datos que ya hay en
+`localStorage`.
+
+Está pensado para que lo lea una automatización externa (un Atajo de iPhone)
+y se lo pase a otra IA como contexto, no para una persona. Sin ese parámetro la
+app se comporta exactamente igual que siempre (`js/boot.js` decide la ruta). Es
+una transformación puramente local: no hace ninguna llamada de red y no toca la
+copia en la nube ni el cifrado.
 
 ## Copia en la nube (opcional)
 

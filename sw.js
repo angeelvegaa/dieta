@@ -7,7 +7,7 @@
    Se sirve desde una subruta (GitHub Pages), así que todas las rutas son
    relativas al propio sw.js. */
 
-const VERSION = "v8";
+const VERSION = "v9";
 const APP_CACHE = "dieta-app-" + VERSION;
 const FONT_CACHE = "dieta-fonts";
 
@@ -16,7 +16,9 @@ const ASSETS = [
   "./index.html",
   "./manifest.json",
   "./css/app.css",
+  "./js/boot.js",
   "./js/app.js",
+  "./js/autoexport.js",
   "./js/config.js",
   "./js/dates.js",
   "./js/storage.js",

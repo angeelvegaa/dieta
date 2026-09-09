@@ -333,6 +333,44 @@ async function runEngine(engine, launcher){
   ok(engine, "backup: restaura sin romper la rejilla", (await page.locator("#grid .cell").count()) > 0);
   if (await page.isVisible("#sheet.open")) await page.locator("#sheet").click({ position: { x: 6, y: 6 } });
 
+  // ---------- R. exportación de texto plano para automatización (?autoexport=1) ----------
+  {
+    // Con el parámetro: NO se monta la interfaz normal, solo un <pre> de texto.
+    // Se abre en el mismo contexto que ya tiene datos de julio y agosto.
+    const aePage = await context.newPage();
+    const aeErrors = [];
+    aePage.on("pageerror", (e) => aeErrors.push(String(e)));
+    aePage.on("console", (m) => { if (m.type() === "error") aeErrors.push("console: " + m.text()); });
+    await pinClock(aePage);
+    await aePage.goto(BASE + "?autoexport=1", { waitUntil: "load" });
+    await aePage.waitForSelector("#autoexport", { timeout: 8000 });
+
+    const onlyPre = await aePage.evaluate(() =>
+      document.body.children.length === 1 && document.body.firstElementChild.tagName === "PRE");
+    ok(engine, "autoexport: el body contiene solo un <pre>", onlyPre);
+    ok(engine, "autoexport: no se monta la interfaz normal (no hay #grid)", (await aePage.locator("#grid").count()) === 0);
+    ok(engine, "autoexport: sin estilos de la app cargados", await aePage.evaluate(() => document.querySelectorAll('link[rel="stylesheet"]').length === 0));
+
+    const txt = await aePage.textContent("#autoexport");
+    ok(engine, "autoexport: cabecera del resumen presente", txt.includes("RESUMEN DIETA"));
+    ok(engine, "autoexport: secciones estructuradas presentes",
+      txt.includes("== CUMPLIMIENTO · VENTANA COMPLETA ==") && txt.includes("== DETALLE DIARIO"));
+    ok(engine, "autoexport: no es un volcado JSON en bruto", !txt.trim().startsWith("{") && !txt.includes('"meses"'));
+    ok(engine, "autoexport: refleja datos locales reales (el día de hoy tiene registro)", txt.includes(TODAY));
+    ok(engine, "autoexport: sin errores de JS", aeErrors.length === 0, aeErrors.join(" | "));
+    await shot(aePage, engine, "10-autoexport");
+    await aePage.close();
+
+    // Sin el parámetro: la misma URL base arranca la app normal, intacta.
+    const normPage = await context.newPage();
+    await pinClock(normPage);
+    await normPage.goto(BASE, { waitUntil: "load" });
+    await normPage.waitForSelector("#grid .cell", { timeout: 8000 });
+    ok(engine, "autoexport: sin el parámetro la app arranca igual que siempre",
+      (await normPage.locator("#autoexport").count()) === 0 && (await normPage.locator("#grid .cell").count()) > 0);
+    await normPage.close();
+  }
+
   // ---------- O. ningún diálogo nativo en todo el recorrido ----------
   ok(engine, "sin confirm()/prompt()/alert() nativos en ningún flujo", nativeDialogs.length === 0, nativeDialogs.join(" | "));
   ok(engine, "sin errores de JS en todo el recorrido", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
