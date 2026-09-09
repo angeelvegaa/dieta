@@ -69,6 +69,15 @@ app se comporta exactamente igual que siempre (`js/boot.js` decide la ruta). Es
 una transformación puramente local: no hace ninguna llamada de red y no toca la
 copia en la nube ni el cifrado.
 
+**Vía principal — botón "Compartir resumen" (Ajustes):** genera el mismo texto
+(con la fecha de hoy `AAAA-MM-DD` en la primera línea) y lo pasa a
+`navigator.share()`, que abre el menú de compartir de iOS — desde ahí se elige
+el Atajo como destino. Se ejecuta **dentro de la app instalada**, así lee los
+datos reales del dispositivo (el `localStorage` de la PWA y el de Safari están
+aislados en iOS, por eso `?autoexport=1` abierto suelto en Safari puede salir
+vacío). Si `navigator.share()` no está disponible, copia el texto al
+portapapeles y avisa.
+
 ## Copia en la nube (opcional)
 
 Apagada por defecto: quien no la active tiene la app 100% local, sin ninguna

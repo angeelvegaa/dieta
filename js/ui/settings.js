@@ -119,6 +119,39 @@ document.getElementById("exportBtn").onclick = async () => {
   catch (e) { await customPrompt("Copia este texto y guárdalo (selecciona todo y copia):", JSON.stringify(dump)); }
 };
 
+/* ---------- compartir resumen (Web Share API de iOS) ----------
+   Mismo texto que la vía ?autoexport=1, pero ejecutado DENTRO de la app
+   instalada, así lee los datos reales de este dispositivo. El menú nativo
+   de iOS deja elegir un Atajo como destino. */
+document.getElementById("shareSummaryBtn").onclick = async () => {
+  let text;
+  try {
+    const { buildSummaryText } = await import("../autoexport.js");
+    text = buildSummaryText();
+  } catch (e) {
+    toast("No se pudo generar el resumen");
+    return;
+  }
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // el usuario cerró el menú de compartir
+      // cualquier otro fallo de share: cae al método alternativo
+    }
+  }
+
+  // sin Web Share (o falló): al portapapeles + aviso
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Resumen copiado al portapapeles");
+  } catch (e) {
+    await customPrompt("Copia este texto y pásaselo a tu Atajo:", text);
+  }
+};
+
 document.getElementById("importBtn").onclick = async () => {
   const txt = await customPrompt("Pega aquí la copia de seguridad o la dieta que te han pasado:");
   if (!txt) return;

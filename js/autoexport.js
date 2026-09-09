@@ -63,8 +63,10 @@ function tallyBlock(t){
   ];
 }
 
-/* ---------- construcción del resumen ---------- */
-function buildReport(){
+/* ---------- construcción del resumen ----------
+   Exportada: la usa también el botón "Compartir resumen" de Ajustes
+   (js/ui/settings.js) para pasar el mismo texto a navigator.share(). */
+export function buildSummaryText(){
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
@@ -215,6 +217,7 @@ function buildReport(){
   };
 
   const L = [];
+  L.push(todayYmd);   // primera línea: fecha de generación, para identificar el resumen después
   L.push("RESUMEN DIETA — exportación automática (solo lectura, para automatización externa)");
   L.push("Generado: " + todayYmd + " · datos LOCALES de este dispositivo (localStorage)");
   L.push("Ventana analizada: " + startYmd + " a " + todayYmd + " (" + WINDOW_DAYS + " días, ~5 semanas)");
@@ -248,7 +251,7 @@ function buildReport(){
 
 export function renderAutoExport(){
   let text;
-  try { text = buildReport(); }
+  try { text = buildSummaryText(); }
   catch (e){ text = "ERROR al generar el resumen local: " + ((e && e.message) || String(e)); }
 
   // fuera estilos y cualquier resto de la app: solo texto plano

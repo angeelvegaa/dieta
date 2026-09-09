@@ -352,6 +352,7 @@ async function runEngine(engine, launcher){
     ok(engine, "autoexport: sin estilos de la app cargados", await aePage.evaluate(() => document.querySelectorAll('link[rel="stylesheet"]').length === 0));
 
     const txt = await aePage.textContent("#autoexport");
+    ok(engine, "autoexport: la 1ª línea es la fecha de hoy (AAAA-MM-DD)", txt.split("\n")[0] === TODAY, txt.split("\n")[0]);
     ok(engine, "autoexport: cabecera del resumen presente", txt.includes("RESUMEN DIETA"));
     ok(engine, "autoexport: secciones estructuradas presentes",
       txt.includes("== CUMPLIMIENTO · VENTANA COMPLETA ==") && txt.includes("== DETALLE DIARIO"));
@@ -369,6 +370,91 @@ async function runEngine(engine, launcher){
     ok(engine, "autoexport: sin el parámetro la app arranca igual que siempre",
       (await normPage.locator("#autoexport").count()) === 0 && (await normPage.locator("#grid .cell").count()) > 0);
     await normPage.close();
+  }
+
+  // ---------- S. botón "Compartir resumen" en Ajustes (Web Share API) ----------
+  {
+    // datos reales mínimos, sembrados solo si no existen (addInitScript re-corre en cada reload)
+    const seedShare = () => {
+      const set = (k, v) => { if (localStorage.getItem(k) === null) localStorage.setItem(k, JSON.stringify(v)); };
+      set("dieta:peso", { "2026-08-12": 80.6, "2026-08-27": 79.8 });
+      const mes = {};
+      for (let d = 1; d <= 28; d++){
+        mes["2026-08-" + String(d).padStart(2, "0")] =
+          { Desayuno: 1, "Media mañana": 1, Comida: d % 6 === 0 ? -1 : 1, Merienda: 1, Cena: 1 };
+      }
+      set("dieta:2026-08", mes);
+    };
+    const defineShare = () => {
+      window.__share = [];
+      const spy = (data) => { window.__share.push(data); return Promise.resolve(); };
+      try { Object.defineProperty(navigator, "share", { configurable: true, value: spy }); } catch (e) {}
+      if (navigator.share !== spy){ try { Object.defineProperty(Navigator.prototype, "share", { configurable: true, value: spy }); } catch (e) {} }
+    };
+
+    // --- S1: navigator.share disponible ---
+    const shareCtx = await browser.newContext({ ...ctxOpts });
+    await shareCtx.addInitScript(seedShare);
+    await shareCtx.addInitScript(defineShare);
+    const sp = await shareCtx.newPage();
+    const sErr = [];
+    sp.on("pageerror", (e) => sErr.push(String(e)));
+    sp.on("console", (m) => { if (m.type() === "error") sErr.push("console: " + m.text()); });
+    await pinClock(sp);
+    await sp.goto(BASE, { waitUntil: "load" });
+    await sp.waitForSelector("#grid .cell");
+    await sp.click("#gear");
+    await sp.waitForSelector("#sheet.open");
+
+    const btn = sp.locator("#shareSummaryBtn");
+    ok(engine, "compartir: el botón aparece en Ajustes", await btn.isVisible());
+    ok(engine, "compartir: el botón se llama 'Compartir resumen'", (await btn.textContent()).trim() === "Compartir resumen");
+
+    await btn.click();
+    await sp.waitForFunction(() => window.__share.length > 0, null, { timeout: 4000 });
+    const shared = await sp.evaluate(() => window.__share[0]);
+    ok(engine, "compartir: llama a navigator.share() exactamente una vez", (await sp.evaluate(() => window.__share.length)) === 1);
+    ok(engine, "compartir: comparte un objeto { text }", !!shared && typeof shared.text === "string");
+    ok(engine, "compartir: la 1ª línea del texto es la fecha de hoy (AAAA-MM-DD)", (shared.text || "").split("\n")[0] === TODAY, (shared.text || "").split("\n")[0]);
+    ok(engine, "compartir: el texto es el resumen de autoexport",
+      shared.text.includes("RESUMEN DIETA") && shared.text.includes("== DETALLE DIARIO"));
+    ok(engine, "compartir: el resumen refleja los datos reales del dispositivo",
+      /Días con algún registro: 2[0-9] de 35/.test(shared.text) && shared.text.includes("79,8 kg"));
+    ok(engine, "compartir: sin errores de JS", sErr.length === 0, sErr.join(" | "));
+    await shot(sp, engine, "11-compartir");
+    await shareCtx.close();
+
+    // --- S2: sin navigator.share -> portapapeles + aviso ---
+    const fbCtx = await browser.newContext({ ...ctxOpts });
+    await fbCtx.addInitScript(seedShare);
+    await fbCtx.addInitScript(() => {
+      try { Object.defineProperty(navigator, "share", { configurable: true, value: undefined }); } catch (e) {}
+      try { Object.defineProperty(Navigator.prototype, "share", { configurable: true, value: undefined }); } catch (e) {}
+      window.__clip = [];
+      try {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: { writeText: (t) => { window.__clip.push(t); return Promise.resolve(); } }
+        });
+      } catch (e) {}
+    });
+    const fp = await fbCtx.newPage();
+    await pinClock(fp);
+    await fp.goto(BASE, { waitUntil: "load" });
+    await fp.waitForSelector("#grid .cell");
+    await fp.click("#gear");
+    await fp.waitForSelector("#sheet.open");
+    await fp.click("#shareSummaryBtn");
+    await fp.waitForFunction(() => window.__clip.length > 0, null, { timeout: 4000 });
+    const clipped = await fp.evaluate(() => window.__clip[0] || "");
+    ok(engine, "compartir (sin Web Share): copia el resumen al portapapeles, con la fecha delante",
+      clipped.split("\n")[0] === TODAY && clipped.includes("RESUMEN DIETA"));
+    await fp.waitForFunction(() => {
+      const t = document.getElementById("toast");
+      return t && t.classList.contains("show") && /portapapeles/i.test(t.textContent || "");
+    }, null, { timeout: 4000 });
+    ok(engine, "compartir (sin Web Share): avisa con un toast del portapapeles", true);
+    await fbCtx.close();
   }
 
   // ---------- O. ningún diálogo nativo en todo el recorrido ----------
